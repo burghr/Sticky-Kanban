@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Sticky Kanban — Sign in</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/icon.svg" />
+  <meta name="theme-color" content="#f5eede" />
+  <script>
+    try {
+      if (localStorage.getItem('theme') === 'dark') document.documentElement.dataset.theme = 'dark';
+      const f = localStorage.getItem('font');
+      if (f) document.documentElement.dataset.font = f;
+      if (localStorage.getItem('stickyTheme') === 'dark') document.documentElement.dataset.sticky = 'dark';
+    } catch (e) {}
+  </script>
+</head>
+<body class="login-body">
+  <main class="login-card">
+    <div class="login-sticky" aria-hidden="true">
+      <span>sticky</span><br /><span>kanban</span>
+    </div>
+    <div class="login-panel">
+      <div class="tabs">
+        <button class="tab active" data-tab="login">Sign in</button>
+        <button class="tab" data-tab="register">Register</button>
+      </div>
+
+      <form id="login-form" class="auth-form active" autocomplete="on">
+        <label>
+          Username
+          <input name="username" autocomplete="username" required minlength="3" maxlength="32" />
+        </label>
+        <label>
+          Password
+          <input name="password" type="password" autocomplete="current-password" required minlength="6" />
+        </label>
+        <button type="submit">Sign in</button>
+        <p class="error" id="login-error" hidden></p>
+      </form>
+
+      <form id="register-form" class="auth-form" autocomplete="on">
+        <label>
+          Username
+          <input name="username" autocomplete="username" required minlength="3" maxlength="32" pattern="[a-zA-Z0-9_.\-]+" />
+        </label>
+        <label>
+          Password
+          <input name="password" type="password" autocomplete="new-password" required minlength="6" />
+        </label>
+        <label>
+          Confirm password
+          <input name="password2" type="password" autocomplete="new-password" required minlength="6" />
+        </label>
+        <button type="submit">Create account</button>
+        <p class="error" id="register-error" hidden></p>
+      </form>
+    </div>
+  </main>
+  <script src="/auth.js"></script>
+</body>
+</html>

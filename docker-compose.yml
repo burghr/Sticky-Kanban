@@ -1,0 +1,14 @@
+services:
+  sticky-kanban:
+    build: .
+    container_name: sticky-kanban
+    restart: unless-stopped
+    ports:
+      - "9889:9889"
+    volumes:
+      - ./data:/data
+    environment:
+      SESSION_SECRET: ${SESSION_SECRET:-change-me-please}
+      PORT: 9889
+      DATA_DIR: /data
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-}

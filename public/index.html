@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>Sticky Kanban</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/icon.svg" />
+  <meta name="theme-color" content="#f5eede" />
+  <script>
+    try {
+      if (localStorage.getItem('theme') === 'dark') document.documentElement.dataset.theme = 'dark';
+      const f = localStorage.getItem('font');
+      if (f) document.documentElement.dataset.font = f;
+      if (localStorage.getItem('stickyTheme') === 'dark') document.documentElement.dataset.sticky = 'dark';
+    } catch (e) {}
+  </script>
+</head>
+<body class="app-body">
+  <header class="topbar">
+    <h1 class="brand">sticky<span>kanban</span></h1>
+    <div class="topbar-right">
+      <button id="board-btn" class="ghost-btn board-btn" title="Switch board">
+        <span id="board-name">Board</span> <span class="chev">▾</span>
+      </button>
+      <select id="filter-category" class="ghost-btn filter-select" title="Filter by category">
+        <option value="">All categories</option>
+      </select>
+      <button id="add-lane-btn" class="ghost-btn" title="Add lane">+ Lane</button>
+      <button id="settings-btn" class="ghost-btn" title="Settings">⚙</button>
+      <span id="user-label" class="user-label"></span>
+      <button id="logout-btn" class="ghost-btn">Sign out</button>
+    </div>
+  </header>
+
+  <!-- Settings popover -->
+  <div id="settings-menu" class="popover" hidden>
+    <div class="popover-row">
+      <span>Theme</span>
+      <button id="theme-btn" class="ghost-btn">🌙</button>
+    </div>
+    <div class="popover-row">
+      <span>Font</span>
+      <button id="font-btn" class="ghost-btn">Handwritten</button>
+    </div>
+    <div class="popover-row">
+      <span>Stickies</span>
+      <button id="sticky-theme-btn" class="ghost-btn">Bright</button>
+    </div>
+    <div class="popover-row">
+      <span>Lane width</span>
+      <button id="lane-width-btn" class="ghost-btn">Standard</button>
+    </div>
+    <div class="popover-row">
+      <span>Categories</span>
+      <button id="categories-btn" class="ghost-btn">Manage…</button>
+    </div>
+    <div class="popover-row">
+      <span>Password</span>
+      <button id="password-btn" class="ghost-btn">Change…</button>
+    </div>
+    <div class="popover-row" id="admin-row" hidden>
+      <span>Admin</span>
+      <a href="/admin" class="ghost-btn">Users…</a>
+    </div>
+  </div>
+
+  <!-- Boards popover -->
+  <div id="boards-menu" class="popover" hidden></div>
+
+  <!-- Categories modal -->
+  <div id="categories-modal" class="editor-backdrop" hidden>
+    <div class="editor-sheet small">
+      <div class="editor-toolbar">
+        <strong>Categories</strong>
+        <div class="spacer"></div>
+        <button class="primary" id="cat-close">Done</button>
+      </div>
+      <div class="cat-list" id="cat-list"></div>
+      <div class="cat-add">
+        <input id="cat-new-name" placeholder="New category name" maxlength="40" />
+        <select id="cat-new-color"></select>
+        <button class="primary" id="cat-new-btn">Add</button>
+      </div>
+    </div>
+  </div>
+
+  <main id="board" class="board"></main>
+
+  <!-- Note editor modal -->
+  <div id="editor" class="editor-backdrop" hidden>
+    <div class="editor-sheet" role="dialog" aria-modal="true" aria-label="Edit note">
+      <div class="editor-toolbar">
+        <div class="toolbar-row">
+          <div class="tool-group mode-group">
+            <button class="tool active" data-mode="text" title="Text">✎ Text</button>
+            <button class="tool" data-mode="draw" title="Draw">✒ Draw</button>
+          </div>
+          <div class="spacer"></div>
+          <button class="danger" id="delete-note-btn">Delete</button>
+          <button class="primary" id="save-note-btn">Done</button>
+        </div>
+        <div class="toolbar-row">
+          <span class="tool-label">Paper</span>
+          <div class="tool-group colors" id="color-picker"></div>
+        </div>
+        <div class="toolbar-row draw-tools" hidden>
+          <span class="tool-label">Pen</span>
+          <div class="tool-group pen-colors" id="pen-color-picker"></div>
+          <div class="tool-group">
+            <button class="tool active" data-draw-tool="pen" title="Pen">Pen</button>
+            <button class="tool" data-draw-tool="eraser" title="Eraser">Eraser</button>
+          </div>
+          <label class="brush">
+            <span class="tool-label">Size</span>
+            <input type="range" id="brush-size" min="1" max="16" value="3" />
+          </label>
+          <div class="spacer"></div>
+          <div class="tool-group">
+            <button class="tool" id="undo-btn" title="Undo">Undo</button>
+            <button class="tool" id="clear-btn" title="Clear">Clear</button>
+          </div>
+        </div>
+      </div>
+      <div class="editor-meta">
+        <input id="note-title" class="note-title-input" placeholder="Title" maxlength="120" />
+        <div class="meta-row">
+          <label class="meta-field">
+            <span>Due</span>
+            <input id="note-due" type="date" />
+            <button id="note-due-clear" class="tiny-btn" title="Clear due date">✕</button>
+          </label>
+          <label class="meta-field">
+            <input id="note-done" type="checkbox" />
+            <span>Done</span>
+          </label>
+          <label class="meta-field">
+            <span>Category</span>
+            <select id="note-category"></select>
+          </label>
+        </div>
+      </div>
+      <div class="editor-stage">
+        <div class="editor-note" id="editor-note">
+          <textarea id="note-text" placeholder="Write something…"></textarea>
+          <canvas id="note-canvas"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
