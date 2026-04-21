@@ -149,7 +149,7 @@ body.dark {
 /* ---------- Top bar ---------- */
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 20px; position: sticky; top: 0; z-index: 5;
+  padding: calc(14px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right)) 14px calc(20px + env(safe-area-inset-left)); position: sticky; top: 0; z-index: 5;
   background: linear-gradient(180deg, var(--topbar-grad-1), var(--topbar-grad-2));
   backdrop-filter: saturate(1.2) blur(6px);
   border-bottom: 1px solid var(--lane-border);
