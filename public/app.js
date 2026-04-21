@@ -51,6 +51,7 @@ async function api(path, opts = {}) {
     const me = await api('/api/me');
     if (!me.user) { location.href = '/login.html'; return; }
     state.user = me.user;
+    state.authMode = me.mode || 'local';
     document.getElementById('user-label').textContent = `@${me.user.username}`;
     if (me.user.is_admin) document.getElementById('admin-row').hidden = false;
 
@@ -179,6 +180,12 @@ function wireGlobal() {
   // Logout
   document.getElementById('logout-btn').addEventListener('click', async () => {
     await api('/api/logout', { method: 'POST' });
+    // In SSO mode, also end the Authentik proxy session; otherwise the next
+    // request silently re-authenticates via the forward-auth cookie.
+    if (state.authMode === 'sso') {
+      location.href = '/outpost.goauthentik.io/sign_out';
+      return;
+    }
     location.href = '/login.html';
   });
 

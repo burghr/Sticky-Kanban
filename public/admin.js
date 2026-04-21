@@ -97,8 +97,10 @@ function showError(m) {
 }
 
 document.getElementById('logout-btn').addEventListener('click', async () => {
+  let mode = 'local';
+  try { mode = (await api('/api/me')).mode || 'local'; } catch {}
   await api('/api/logout', { method: 'POST' });
-  window.location.href = '/';
+  window.location.href = mode === 'sso' ? '/outpost.goauthentik.io/sign_out' : '/';
 });
 
 load();

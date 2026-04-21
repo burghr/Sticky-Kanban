@@ -9,6 +9,15 @@ const PORT = parseInt(process.env.PORT || '9889', 10);
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-secret-change-me';
 
+// Auth mode: "local" (default) = built-in username/password. "sso" = trust
+// forward-auth headers from an upstream IdP. Only enable sso when this server
+// sits behind a proxy that strips and re-sets these headers on every request.
+const AUTH_MODE = (process.env.AUTH_MODE || 'local').toLowerCase() === 'sso' ? 'sso' : 'local';
+const SSO_HEADER_USERNAME = (process.env.SSO_HEADER_USERNAME || 'X-authentik-username').toLowerCase();
+const SSO_HEADER_GROUPS   = (process.env.SSO_HEADER_GROUPS   || 'X-authentik-groups').toLowerCase();
+const SSO_ADMIN_GROUP     = (process.env.SSO_ADMIN_GROUP || '').trim();
+const ssoEnabled = () => AUTH_MODE === 'sso';
+
 fs.mkdirSync(DATA_DIR, { recursive: true });
 const db = new Database(path.join(DATA_DIR, 'sticky.db'));
 db.pragma('journal_mode = WAL');
@@ -127,6 +136,68 @@ const CATEGORY_COLORS = ['red','orange','yellow','green','blue','purple','pink',
 const randomColor = () => COLORS[Math.floor(Math.random() * COLORS.length)];
 const randomRotation = () => (Math.random() * 6 - 3); // -3deg .. +3deg
 
+// --- SSO helpers ---
+function ssoUsername(req) {
+  const v = req.headers[SSO_HEADER_USERNAME];
+  return typeof v === 'string' && v.trim() ? v.trim() : null;
+}
+function ssoGroups(req) {
+  const v = req.headers[SSO_HEADER_GROUPS];
+  if (typeof v !== 'string' || !v) return [];
+  const parts = v.includes('|') ? v.split('|') : v.split(',');
+  return parts.map(s => s.trim()).filter(Boolean);
+}
+function ssoIsAdmin(req) {
+  if (!SSO_ADMIN_GROUP) return false;
+  return ssoGroups(req).includes(SSO_ADMIN_GROUP);
+}
+
+// Seed default board + lanes for a freshly-created user.
+function seedDefaultBoard(userId) {
+  const ts = now();
+  const insertBoard = db.prepare('INSERT INTO boards (user_id, name, position, created_at) VALUES (?, ?, 0, ?)');
+  const insertLane  = db.prepare('INSERT INTO lanes (user_id, board_id, name, position, created_at) VALUES (?, ?, ?, ?, ?)');
+  const tx = db.transaction(() => {
+    const { lastInsertRowid: boardId } = insertBoard.run(userId, 'My Board', ts);
+    DEFAULT_LANES.forEach((name, i) => insertLane.run(userId, boardId, name, i, ts));
+  });
+  tx();
+}
+
+// Upsert SSO user by username and return their id.
+function upsertSsoUser(username) {
+  let row = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
+  if (row) return row.id;
+  const info = db.prepare('INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)')
+    .run(username, 'sso:' + require('crypto').randomBytes(24).toString('hex'), now());
+  const userId = info.lastInsertRowid;
+  seedDefaultBoard(userId);
+  return userId;
+}
+
+// In SSO mode: if the session is empty but forward-auth headers are present,
+// auto-establish a session for that user. Runs before any requireAuth handler.
+function ssoAutoLogin(req, res, next) {
+  if (!ssoEnabled() || req.session.userId) return next();
+  const username = ssoUsername(req);
+  if (!username) return next();
+  try {
+    const userId = upsertSsoUser(username);
+    const admin = ssoIsAdmin(req) ? 1 : 0;
+    db.prepare('UPDATE users SET last_login_at = ?, is_admin = ? WHERE id = ?').run(now(), admin, userId);
+    req.session.userId = userId;
+    req.session.username = username;
+  } catch (e) {
+    console.error('sso auto-login failed:', e.message);
+  }
+  next();
+}
+
+function blockIfSso(req, res, next) {
+  if (ssoEnabled()) return res.status(403).json({ error: 'Disabled in SSO mode.' });
+  next();
+}
+
 function requireAuth(req, res, next) {
   if (!req.session.userId) return res.status(401).json({ error: 'not authenticated' });
   next();
@@ -139,8 +210,15 @@ function validPassword(p) {
   return typeof p === 'string' && p.length >= 6 && p.length <= 200;
 }
 
+// SSO auto-login middleware runs after session middleware but before routes.
+app.use(ssoAutoLogin);
+
+app.get('/api/auth/config', (req, res) => {
+  res.json({ mode: ssoEnabled() ? 'sso' : 'local' });
+});
+
 // --- auth routes ---
-app.post('/api/register', (req, res) => {
+app.post('/api/register', blockIfSso, (req, res) => {
   const { username, password } = req.body || {};
   if (!validUsername(username)) return res.status(400).json({ error: 'Username must be 3-32 chars (letters, numbers, . _ -).' });
   if (!validPassword(password)) return res.status(400).json({ error: 'Password must be at least 6 characters.' });
@@ -168,7 +246,7 @@ app.post('/api/register', (req, res) => {
   res.json({ id: userId, username });
 });
 
-app.post('/api/login', (req, res) => {
+app.post('/api/login', blockIfSso, (req, res) => {
   const { username, password } = req.body || {};
   if (typeof username !== 'string' || typeof password !== 'string') {
     return res.status(400).json({ error: 'Missing credentials.' });
@@ -188,15 +266,16 @@ app.post('/api/logout', (req, res) => {
 });
 
 app.get('/api/me', (req, res) => {
-  if (!req.session.userId) return res.json({ user: null });
+  const mode = ssoEnabled() ? 'sso' : 'local';
+  if (!req.session.userId) return res.json({ user: null, mode });
   const u = db.prepare('SELECT id, username, is_admin FROM users WHERE id = ?').get(req.session.userId);
-  if (!u) return res.json({ user: null });
-  res.json({ user: { id: u.id, username: u.username, is_admin: !!u.is_admin } });
+  if (!u) return res.json({ user: null, mode });
+  res.json({ user: { id: u.id, username: u.username, is_admin: !!u.is_admin }, mode });
 });
 
 
 // --- password change (self) ---
-app.post('/api/password', requireAuth, (req, res) => {
+app.post('/api/password', requireAuth, blockIfSso, (req, res) => {
   const { current_password, new_password } = req.body || {};
   if (!validPassword(new_password)) return res.status(400).json({ error: 'New password must be at least 6 characters.' });
   const u = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(req.session.userId);
@@ -521,7 +600,10 @@ app.get('/admin', (req, res) => {
   if (!req.session.userId) return res.redirect('/');
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
-app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
+app.get('/login', (req, res) => {
+  if (ssoEnabled()) return res.redirect('/');
+  res.sendFile(path.join(__dirname, 'public', 'login.html'));
+});
 
 app.listen(PORT, () => {
   console.log(`sticky-kanban listening on :${PORT} (data: ${DATA_DIR})`);

@@ -12,3 +12,7 @@ services:
       PORT: 9889
       DATA_DIR: /data
       ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      AUTH_MODE: ${AUTH_MODE:-local}
+      SSO_HEADER_USERNAME: ${SSO_HEADER_USERNAME:-X-authentik-username}
+      SSO_HEADER_GROUPS: ${SSO_HEADER_GROUPS:-X-authentik-groups}
+      SSO_ADMIN_GROUP: ${SSO_ADMIN_GROUP:-}
